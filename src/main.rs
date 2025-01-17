@@ -11,7 +11,7 @@ async fn proxy_handler(
     let target_host = "127.0.0.1";
     let target_port = &req.uri().path()[1..].parse::<u16>()?;
     let uri = format!("http://{target_host}:{target_port}/metrics");
-    println!("Request forwarded to {uri}");
+    //println!("Request forwarded to {uri}");
 
     let url = uri.parse::<hyper::Uri>().unwrap();
 
@@ -22,7 +22,7 @@ async fn proxy_handler(
     let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
     tokio::task::spawn(async move {
         if let Err(err) = conn.await {
-            println!("Connection failed: {:?}", err);
+            eprintln!("Connection failed: {:?}", err);
         }
     });
 
