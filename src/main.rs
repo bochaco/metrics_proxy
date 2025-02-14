@@ -1,21 +1,19 @@
-use bytes::{Bytes, BytesMut};
-use http_body_util::{BodyExt, Empty, Full};
 use hyper::{body::Incoming, server::conn::http1, service::service_fn, Request, Response};
 use hyper_util::rt::TokioIo;
 use std::{error::Error, net::SocketAddr};
 use tokio::net::{TcpListener, TcpStream};
 
+const TARGET_HOST: &str = "127.0.0.1";
+
 async fn proxy_handler(
     req: Request<Incoming>,
-) -> Result<Response<Full<Bytes>>, Box<dyn Error + Send + Sync>> {
-    let target_host = "127.0.0.1";
+) -> Result<Response<Incoming>, Box<dyn Error + Send + Sync>> {
     let target_port = &req.uri().path()[1..].parse::<u16>()?;
-    let uri = format!("http://{target_host}:{target_port}/metrics");
-    //println!("Request forwarded to {uri}");
+    let uri = format!("http://{TARGET_HOST}:{target_port}/metrics");
+    let url = uri.parse::<hyper::Uri>()?;
+    //println!("Request forwarded to {url}");
 
-    let url = uri.parse::<hyper::Uri>().unwrap();
-
-    let addr = format!("{target_host}:{target_port}");
+    let addr = format!("{TARGET_HOST}:{target_port}");
     let stream = TcpStream::connect(addr).await?;
     let io = TokioIo::new(stream);
 
@@ -26,34 +24,24 @@ async fn proxy_handler(
         }
     });
 
-    let authority = url.authority().unwrap().clone();
-
     let path = url.path();
-    let req = Request::builder()
-        .uri(path)
-        .header(hyper::header::HOST, authority.as_str())
-        .body(Empty::<Bytes>::new())?;
+    let builder = Request::builder().uri(path);
 
-    let mut res = sender.send_request(req).await?;
+    // Copy headers
+    let headers = req.headers().clone();
+    let mut req = builder.body(req.into_body())?;
+    *req.headers_mut() = headers;
 
-    let mut buffer = BytesMut::new();
-    while let Some(next) = res.frame().await {
-        let frame = next?;
-        if let Some(chunk) = frame.data_ref() {
-            buffer.extend_from_slice(chunk);
-        }
-    }
-    let response_bytes: Bytes = buffer.freeze();
+    let res = sender.send_request(req).await?;
 
-    Ok(Response::new(Full::new(response_bytes)))
+    Ok(res)
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
-    println!("Listening on {addr} ...");
-
     let listener = TcpListener::bind(addr).await?;
+    println!("Listening on {addr} ...");
 
     // We start a loop to continuously accept incoming connections
     loop {

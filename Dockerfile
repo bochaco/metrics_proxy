@@ -9,8 +9,6 @@ RUN ls -la /target/release
 
 FROM alpine AS runtime
 WORKDIR /app
-RUN apk update \
-    && apk add openssl ca-certificates
 
 COPY --from=builder /target/release/metrics_proxy /app/
 RUN ls -la /app/
